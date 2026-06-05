@@ -1,4 +1,4 @@
-// Copyright 2024 The go-ethereum Authors
+// Copyright 2026 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,24 +14,27 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !wasm
-// +build !wasm
+//go:build wasm
+// +build wasm
 
-package rawdb
+package treedb
 
 import (
 	"errors"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/ethereum/go-ethereum/ethdb/memorydb"
-	treedbethdb "github.com/ethereum/go-ethereum/ethdb/treedb"
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-func IsDbErrNotFound(err error) bool {
-	return errors.Is(err, leveldb.ErrNotFound) || errors.Is(err, pebble.ErrNotFound) || errors.Is(err, memorydb.ErrMemorydbNotFound) || errors.Is(err, treedbethdb.ErrNotFound)
+var (
+	ErrClosed           = errors.New("treedb is unavailable on wasm: closed")
+	ErrNotFound         = errors.New("treedb is unavailable on wasm: key not found")
+	ErrRecoveryRequired = errors.New("treedb is unavailable on wasm: recovery required")
+)
+
+// New returns an unsupported-platform error. Persistent TreeDB is not available
+// in wasm builds.
+func New(file string, cache int, handles int, namespace string, readonly bool) (ethdb.KeyValueStore, error) {
+	return nil, errors.New("treedb is unavailable on wasm")
 }
 
-func IsDbErrRecoveryRequired(err error) bool {
-	return treedbethdb.IsRecoveryRequired(err)
-}
+func IsRecoveryRequired(err error) bool { return false }

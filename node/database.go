@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	treedbethdb "github.com/ethereum/go-ethereum/ethdb/treedb"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -46,11 +47,11 @@ type DatabaseOptions struct {
 
 type InternalOpenOptions struct {
 	Directory string
-	DbEngine  string // "leveldb" | "pebble"
+	DbEngine  string // "leveldb" | "pebble" | "treedb"
 	DatabaseOptions
 }
 
-// OpenDatabase opens both a disk-based key-value database such as leveldb or pebble, but also
+// OpenDatabase opens both a disk-based key-value database such as leveldb, pebble, or treedb, but also
 // integrates it with a freezer database -- if the AncientDir option has been
 // set on the provided OpenOptions.
 // The passed o.AncientDir indicates the path of root ancient directory where
@@ -77,15 +78,18 @@ func OpenDatabase(o InternalOpenOptions) (ethdb.Database, error) {
 	return frdb, nil
 }
 
-// openKeyValueDatabase opens a disk-based key-value database, e.g. leveldb or pebble.
+// openKeyValueDatabase opens a disk-based key-value database, e.g. leveldb, pebble, or treedb.
 //
 //						  type == null          type != null
 //					   +----------------------------------------
 //	db is non-existent |  pebble default  |  specified type
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o InternalOpenOptions) (ethdb.KeyValueStore, error) {
-	// Reject any unsupported database type
-	if len(o.DbEngine) != 0 && o.DbEngine != rawdb.DBLeveldb && o.DbEngine != rawdb.DBPebble {
+	// Reject any unsupported database type.
+	// TreeDB is wired as a direct case for the first POC because the reusable
+	// adapter already lives in its own module; NewTreeDBDatabase is the local seam
+	// to reuse if this grows into a registry/hook.
+	if len(o.DbEngine) != 0 && o.DbEngine != rawdb.DBLeveldb && o.DbEngine != rawdb.DBPebble && o.DbEngine != rawdb.DBTreedb {
 		return nil, fmt.Errorf("unknown db.engine %v", o.DbEngine)
 	}
 	// Retrieve any pre-existing database's type and use that or the requested one
@@ -101,6 +105,10 @@ func openKeyValueDatabase(o InternalOpenOptions) (ethdb.KeyValueStore, error) {
 	if o.DbEngine == rawdb.DBLeveldb || existingDb == rawdb.DBLeveldb {
 		log.Info("Using leveldb as the backing database")
 		return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.MetricsNamespace, o.ReadOnly)
+	}
+	if o.DbEngine == rawdb.DBTreedb || existingDb == rawdb.DBTreedb {
+		log.Info("Using TreeDB as the backing database")
+		return NewTreeDBDatabase(o.Directory, o.Cache, o.Handles, o.MetricsNamespace, o.ReadOnly)
 	}
 	// No pre-existing database, no user-requested one either. Default to Pebble.
 	log.Info("Defaulting to pebble as the backing database")
@@ -126,4 +134,10 @@ func NewPebbleDBDatabase(file string, cache int, handles int, namespace string, 
 		return nil, err
 	}
 	return db, nil
+}
+
+// NewTreeDBDatabase creates a persistent TreeDB key-value database without a
+// freezer moving immutable chain segments into cold storage.
+func NewTreeDBDatabase(file string, cache int, handles int, namespace string, readonly bool) (ethdb.KeyValueStore, error) {
+	return treedbethdb.New(file, cache, handles, namespace, readonly)
 }
