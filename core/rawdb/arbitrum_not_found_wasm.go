@@ -28,3 +28,7 @@ import (
 func IsDbErrNotFound(err error) bool {
 	return errors.Is(err, memorydb.ErrMemorydbNotFound)
 }
+
+func IsDbErrRecoveryRequired(err error) bool {
+	return false
+}
